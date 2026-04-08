@@ -3,6 +3,8 @@
 // be placed in the file, and deletes data previously in the file.
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+
 // clientData structure definition
 struct clientData
 {
@@ -18,6 +20,10 @@ void textFile(FILE *readPtr);
 void updateRecord(FILE *fPtr);
 void newRecord(FILE *fPtr);
 void deleteRecord(FILE *fPtr);
+void transferFunds(FILE *fPtr);
+void calculateSIP(void);
+void calculateTax(void);
+void loanEligibility(FILE *fPtr);
 
 int main(int argc, char *argv[])
 {
@@ -32,27 +38,34 @@ int main(int argc, char *argv[])
     }
 
     // enable user to specify action
-    while ((choice = enterChoice()) != 5)
+    while ((choice = enterChoice()) != 9)
     {
         switch (choice)
         {
-        // create text file from record file
         case 1:
             textFile(cfPtr);
             break;
-        // update record
         case 2:
             updateRecord(cfPtr);
             break;
-        // create record
         case 3:
             newRecord(cfPtr);
             break;
-        // delete existing record
         case 4:
             deleteRecord(cfPtr);
             break;
-        // display if user does not select valid choice
+        case 5:
+            transferFunds(cfPtr);
+            break;
+        case 6:
+            calculateSIP();
+            break;
+        case 7:
+            calculateTax();
+            break;
+        case 8:
+            loanEligibility(cfPtr);
+            break;
         default:
             puts("Incorrect choice");
             break;
@@ -131,7 +144,7 @@ void updateRecord(FILE *fPtr)
 
         // move file pointer to correct record in file
         // move back by 1 record length
-        fseek(fPtr, -sizeof(struct clientData), SEEK_CUR);
+        fseek(fPtr, -(long)sizeof(struct clientData), SEEK_CUR);
         // write updated record over old record in file
         fwrite(&client, sizeof(struct clientData), 1, fPtr);
     } // end else
@@ -205,14 +218,172 @@ unsigned int enterChoice(void)
 {
     unsigned int menuChoice; // variable to store user's choice
     // display available options
-    printf("%s", "\nEnter your choice\n"
-                 "1 - store a formatted text file of accounts called\n"
-                 "    \"accounts.txt\" for printing\n"
-                 "2 - update an account\n"
-                 "3 - add a new account\n"
-                 "4 - delete an account\n"
-                 "5 - end program\n? ");
+    printf("%s", "\nEnter your choice:\n"
+                 "1 - Store a formatted text file of accounts for printing\n"
+                 "2 - Update an account (Deposit/Withdraw)\n"
+                 "3 - Add a new account\n"
+                 "4 - Delete an account\n"
+                 "5 - Transfer funds\n"
+                 "6 - Systematic Investment Plan (SIP) Calculator\n"
+                 "7 - Tax Calculator\n"
+                 "8 - Check Loan Eligibility\n"
+                 "9 - End program\n? ");
 
     scanf("%u", &menuChoice); // receive choice from user
     return menuChoice;
 } // end function enterChoice
+
+// transfer funds between two accounts
+void transferFunds(FILE *fPtr)
+{
+    unsigned int sender, receiver;
+    double amount;
+    struct clientData senderClient = {0, "", "", 0.0};
+    struct clientData receiverClient = {0, "", "", 0.0};
+
+    printf("Enter sender account number (1-100): ");
+    scanf("%u", &sender);
+    printf("Enter receiver account number (1-100): ");
+    scanf("%u", &receiver);
+
+    if (sender == receiver) {
+        printf("Sender and receiver cannot be the same.\n");
+        return;
+    }
+
+    // Read sender
+    fseek(fPtr, (sender - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&senderClient, sizeof(struct clientData), 1, fPtr);
+    if (senderClient.acctNum == 0) {
+        printf("Sender account #%u does not exist.\n", sender);
+        return;
+    }
+
+    // Read receiver
+    fseek(fPtr, (receiver - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&receiverClient, sizeof(struct clientData), 1, fPtr);
+    if (receiverClient.acctNum == 0) {
+        printf("Receiver account #%u does not exist.\n", receiver);
+        return;
+    }
+
+    printf("Enter amount to transfer: ");
+    scanf("%lf", &amount);
+
+    if (amount <= 0) {
+        printf("Invalid transfer amount.\n");
+        return;
+    }
+    if (senderClient.balance < amount) {
+        printf("Insufficient balance in sender account.\n");
+        return;
+    }
+
+    // Perform transfer
+    senderClient.balance -= amount;
+    receiverClient.balance += amount;
+
+    // Update sender
+    fseek(fPtr, (sender - 1) * sizeof(struct clientData), SEEK_SET);
+    fwrite(&senderClient, sizeof(struct clientData), 1, fPtr);
+
+    // Update receiver
+    fseek(fPtr, (receiver - 1) * sizeof(struct clientData), SEEK_SET);
+    fwrite(&receiverClient, sizeof(struct clientData), 1, fPtr);
+
+    printf("Transfer successful...\n");
+    printf("Sender New Balance: %.2f\n", senderClient.balance);
+    printf("Receiver New Balance: %.2f\n", receiverClient.balance);
+}
+
+// simulate SIP using compound interest
+void calculateSIP(void)
+{
+    double monthlyInvestment, interestRate, expectedReturn, totalInvestment;
+    int durationYears, months;
+
+    printf("Enter monthly investment amount: ");
+    scanf("%lf", &monthlyInvestment);
+    printf("Enter expected annual return rate (%%): ");
+    scanf("%lf", &interestRate);
+    printf("Enter duration in years: ");
+    scanf("%d", &durationYears);
+
+    if (monthlyInvestment <= 0 || interestRate < 0 || durationYears <= 0) {
+        printf("Invalid input for SIP calculation.\n");
+        return;
+    }
+
+    months = durationYears * 12;
+    // Monthly interest rate
+    double i = (interestRate / 100) / 12;
+    // SIP Formula: M = P x ({[1 + i]^n - 1} / i) x (1 + i)
+    expectedReturn = monthlyInvestment * (pow(1 + i, months) - 1) / i * (1 + i);
+    totalInvestment = monthlyInvestment * months;
+
+    printf("\n--- SIP Calculation Results ---\n");
+    printf("Total Amount Invested : %.2f\n", totalInvestment);
+    printf("Expected Return Rate  : %.2f%%\n", interestRate);
+    printf("Estimated Total Value : %.2f\n\n", expectedReturn);
+}
+
+// tax calculator based on slabs
+void calculateTax(void)
+{
+    double income, tax = 0.0;
+
+    printf("Enter annual income: ");
+    scanf("%lf", &income);
+
+    if (income < 0) {
+        printf("Invalid income amount.\n");
+        return;
+    }
+
+    if (income <= 250000) {
+        tax = 0.0;
+    } else if (income <= 500000) {
+        tax = (income - 250000) * 0.05;
+    } else if (income <= 1000000) {
+        tax = (250000 * 0.05) + ((income - 500000) * 0.20);
+    } else {
+        tax = (250000 * 0.05) + (500000 * 0.20) + ((income - 1000000) * 0.30);
+    }
+
+    printf("\n--- Tax Calculation ---\n");
+    printf("Annual Income : %.2f\n", income);
+    printf("Total Tax Payable : %.2f\n\n", tax);
+}
+
+// check loan eligibility based on account balance
+void loanEligibility(FILE *fPtr)
+{
+    unsigned int accountNum;
+    struct clientData client = {0, "", "", 0.0};
+    double minBalanceThreshold = 10000.0;
+    int loanMultiple = 5;
+
+    printf("Enter account number to check loan eligibility (1 - 100): ");
+    scanf("%u", &accountNum);
+
+    fseek(fPtr, (accountNum - 1) * sizeof(struct clientData), SEEK_SET);
+    fread(&client, sizeof(struct clientData), 1, fPtr);
+
+    if (client.acctNum == 0) {
+        printf("Account #%u does not exist.\n", accountNum);
+        return;
+    }
+
+    printf("\n--- Loan Eligibility Check ---\n");
+    printf("Account: %s %s\n", client.firstName, client.lastName);
+    printf("Account Balance: %.2f\n", client.balance);
+
+    if (client.balance >= minBalanceThreshold) {
+        double maxLoan = client.balance * loanMultiple;
+        printf("Status: ELIGIBLE\n");
+        printf("Maximum Eligible Loan Amount: %.2f\n\n", maxLoan);
+    } else {
+        printf("Status: NOT ELIGIBLE\n");
+        printf("Reason: Balance is below the minimum threshold of %.2f\n\n", minBalanceThreshold);
+    }
+}
